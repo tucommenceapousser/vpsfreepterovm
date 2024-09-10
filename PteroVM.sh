@@ -1,122 +1,17 @@
 #!/bin/sh
 
 #############################
-# Linux Installation #
+# Fun and Interactive Linux Installation #
 #############################
 
 # Define the root directory to /home/container.
-# We can only write in /home/container and /tmp in the container.
-ROOTFS_DIR=/home/container
+ROOTFS_DIR=/home/runner/vpsfreepterovm
 
 export PATH=$PATH:~/.local/usr/bin
-
 
 max_retries=50
 timeout=3
 
-
-# Detect the machine architecture.
-ARCH=$(uname -m)
-
-# Check machine architecture to make sure it is supported.
-# If not, we exit with a non-zero status code.
-if [ "$ARCH" = "x86_64" ]; then
-  ARCH_ALT="amd64"
-elif [ "$ARCH" = "aarch64" ]; then
-  ARCH_ALT="arm64"
-else
-  printf "Unsupported CPU architecture: ${ARCH}"
-  exit 1
-fi
-
-# Download & decompress the Linux root file system if not already installed.
-
-if [ ! -e $ROOTFS_DIR/.installed ]; then
-echo "#######################################################################################"
-echo "#"
-echo "#                                  VPSFREE.ES PteroVM"
-echo "#"
-echo "#                           Copyright (C) 2022 - 2023, VPSFREE.ES"
-echo "#"
-echo "#"
-echo "#######################################################################################"
-echo ""
-echo "* [0] Debian"
-echo "* [1] Ubuntu"
-echo "* [2] Alpine"
-
-read -p "Enter OS (0-3): " input
-
-case $input in
-
-    0)
-    wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.xz \
-    "https://github.com/termux/proot-distro/releases/download/v4.7.0/debian-bullseye-${ARCH}-pd-v4.7.0.tar.xz"
-    apt download xz-utils
-    deb_file=$(find $ROOTFS_DIR -name "*.deb" -type f)
-    dpkg -x $deb_file ~/.local/
-    rm "$deb_file"
-    
-    tar -xJf /tmp/rootfs.tar.xz -C $ROOTFS_DIR --strip-components=1;;
-
-    1)
-    wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.gz \
-    "https://github.com/termux/proot-distro/releases/download/v4.11.0/ubuntu-jammy-${ARCH}-pd-v4.11.0.tar.xz"
-
-    tar -xf /tmp/rootfs.tar.gz -C $ROOTFS_DIR --strip-components=1;;
-
-    2)
-    wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.gz \
-    "https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/alpine-minirootfs-3.19.1-${ARCH}.tar.gz"
-
-    tar -xf /tmp/rootfs.tar.gz -C $ROOTFS_DIR;;
-
-
-esac
-
-fi
-
-################################
-# Package Installation & Setup #
-################################
-
-# Download static APK-Tools temporarily because minirootfs does not come with APK pre-installed.
-if [ ! -e $ROOTFS_DIR/.installed ]; then
-    # Download the packages from their sources
-    mkdir $ROOTFS_DIR/usr/local/bin -p
-
-    wget --tries=$max_retries --timeout=$timeout -O $ROOTFS_DIR/usr/local/bin/proot "https://raw.githubusercontent.com/dxomg/vpsfreepterovm/main/proot-${ARCH}"
-
-  while [ ! -s "$ROOTFS_DIR/usr/local/bin/proot" ]; do
-      rm $ROOTFS_DIR/usr/local/bin/proot -rf
-      wget --tries=$max_retries --timeout=$timeout -O $ROOTFS_DIR/usr/local/bin/proot "https://raw.githubusercontent.com/dxomg/vpsfreepterovm/main/proot-${ARCH}"
-  
-      if [ -s "$ROOTFS_DIR/usr/local/bin/proot" ]; then
-          # Make PRoot executable.
-          chmod 755 $ROOTFS_DIR/usr/local/bin/proot
-          break  # Exit the loop since the file is not empty
-      fi
-      
-      chmod 755 $ROOTFS_DIR/usr/local/bin/proot
-      sleep 1  # Add a delay before retrying to avoid hammering the server
-  done
-  
-  chmod 755 $ROOTFS_DIR/usr/local/bin/proot
-
-fi
-
-# Clean-up after installation complete & finish up.
-if [ ! -e $ROOTFS_DIR/.installed ]; then
-    # Add DNS Resolver nameservers to resolv.conf.
-    printf "nameserver 1.1.1.1\nnameserver 1.0.0.1" > ${ROOTFS_DIR}/etc/resolv.conf
-    # Wipe the files we downloaded into /tmp previously.
-    rm -rf /tmp/rootfs.tar.xz /tmp/sbin
-    # Create .installed to later check whether Alpine is installed.
-    touch $ROOTFS_DIR/.installed
-fi
-
-# Print some useful information to the terminal before entering PRoot.
-# This is to introduce the user with the various Alpine Linux commands.
 # Define color variables
 BLACK='\e[0;30m'
 BOLD_BLACK='\e[1;30m'
@@ -134,56 +29,145 @@ CYAN='\e[0;36m'
 BOLD_CYAN='\e[1;36m'
 WHITE='\e[0;37m'
 BOLD_WHITE='\e[1;37m'
+RESET_COLOR='\e[0m'  # Reset text color
 
-# Reset text color
-RESET_COLOR='\e[0m'
+# Detect the machine architecture
+ARCH=$(uname -m)
 
+# Supported architectures check
+if [ "$ARCH" = "x86_64" ]; then
+  ARCH_ALT="amd64"
+elif [ "$ARCH" = "aarch64" ]; then
+  ARCH_ALT="arm64"
+else
+  echo -e "${BOLD_RED}Oops! Unsupported CPU architecture: ${ARCH}. Maybe time for an upgrade?${RESET_COLOR}"
+  exit 1
+fi
 
-# Function to display the header
-display_header() {
-    echo -e "${BOLD_MAGENTA} __      __        ______"
-    echo -e "${BOLD_MAGENTA} \ \    / /       |  ____|"
-    echo -e "${BOLD_MAGENTA}  \ \  / / __  ___| |__ _ __ ___  ___   ___  ___"
-    echo -e "${BOLD_MAGENTA}   \ \/ / '_ \/ __|  __| '__/ _ \/ _ \ / _ \/ __|"
-    echo -e "${BOLD_MAGENTA}    \  /| |_) \__ \ |  | | |  __/  __/|  __/\__ \\"
-    echo -e "${BOLD_MAGENTA}     \/ | .__/|___/_|  |_|  \___|\___(_)___||___/"
-    echo -e "${BOLD_MAGENTA}        | |"
-    echo -e "${BOLD_MAGENTA}        |_|"
-    echo -e "${BOLD_MAGENTA}___________________________________________________"
-    echo -e "           ${YELLOW}-----> System Resources <----${RESET_COLOR}"
-    echo -e ""
+# Check if the root filesystem is already installed
+if [ -e $ROOTFS_DIR/.installed ]; then
+  echo -e "${GREEN}The system is already installed. Skipping installation steps.${RESET_COLOR}"
+else
+  # Fun OS options (displayed only if installation is not done)
+  fun_os_choices() {
+    echo -e "${BOLD_BLUE}#######################################################################################"
+    echo -e "${BOLD_BLUE}#"
+    echo -e "${BOLD_BLUE}#                                  Welcome to the TRHACKNON PteroVM Installer!"
+    echo -e "${BOLD_BLUE}#"
+    echo -e "${BOLD_BLUE}#                           Sit back and let us handle the boring stuff!"
+    echo -e "${BOLD_BLUE}#######################################################################################${RESET_COLOR}"
+    echo ""
+    echo -e "${CYAN}Choose your flavor of Linux: "
+    echo -e "  ${BOLD_GREEN}[0] Debian${RESET_COLOR} - Classic, stable, like your favorite pair of old jeans."
+    echo -e "  ${BOLD_GREEN}[1] Ubuntu${RESET_COLOR} - Friendly and everywhere, like a nice warm coffee!"
+    echo -e "  ${BOLD_GREEN}[2] Alpine${RESET_COLOR} - Lightweight and efficient, for the minimalist in you."
+    echo -e "  ${BOLD_GREEN}[3] Fedora${RESET_COLOR} - Cutting-edge and sleek, for the trendsetters."
+    echo ""
+    read -p "Enter OS (0-3): " input
+  }
+
+  # Main installation function
+  install_rootfs() {
+    case $input in
+      0)
+        echo -e "${YELLOW}Debian it is! A solid choice. Let's get to work!${RESET_COLOR}"
+        wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.xz \
+        "https://github.com/termux/proot-distro/releases/download/v4.7.0/debian-bullseye-${ARCH}-pd-v4.7.0.tar.xz"
+        apt download xz-utils
+        ;;
+      1)
+        echo -e "${YELLOW}Ubuntu, a user-friendly choice. You'll be up and running in no time!${RESET_COLOR}"
+        wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.gz \
+        "https://github.com/termux/proot-distro/releases/download/v4.11.0/ubuntu-jammy-${ARCH}-pd-v4.11.0.tar.xz"
+        ;;
+      2)
+        echo -e "${YELLOW}Alpine it is! Small, fast, and efficient, just like you!${RESET_COLOR}"
+        wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.gz \
+        "https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/alpine-minirootfs-3.19.1-${ARCH}.tar.gz"
+        ;;
+      3)
+        echo -e "${YELLOW}Fedora, living on the edge. Bold choice!${RESET_COLOR}"
+        wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.xz \
+        "https://github.com/termux/proot-distro/releases/download/v4.11.0/ubuntu-noble-${ARCH}-pd-v4.11.0.tar.xz"
+        ;;
+      *)
+        echo -e "${RED}Invalid choice! Let's stick with Debian.${RESET_COLOR}"
+        wget --tries=$max_retries --timeout=$timeout -O /tmp/rootfs.tar.xz \
+        "https://github.com/termux/proot-distro/releases/download/v4.7.0/debian-bullseye-${ARCH}-pd-v4.7.0.tar.xz"
+        ;;
+    esac
+
+    echo -e "${YELLOW}Extracting the root filesystem...${RESET_COLOR}"
+    tar -xf /tmp/rootfs.tar.* -C $ROOTFS_DIR --strip-components=1
+
+    # Creating .installed file after successful installation
+    touch $ROOTFS_DIR/.installed
+    echo -e "${GREEN}Root filesystem installed successfully and .installed file created!${RESET_COLOR}"
+  }
+
+  # Run the OS choice and installation if not installed
+  fun_os_choices
+  install_rootfs
+fi
+
+# Fun header
+fun_header() {
+  echo -e "${BOLD_RED}  __      __        ______"
+  echo -e "${BOLD_YELLOW}  \\ \\    / /       |  ____|"
+  echo -e "${BOLD_GREEN}   \\ \\  / / __  ___| |__ _ __ ___  ___   ___  ___"
+  echo -e "${BOLD_CYAN}    \\ \\/ / '_ \\/ __|  __| '__/ _ \\/ _ \\ / _ \\/ __|"
+  echo -e "${BOLD_BLUE}     \\  /| |_) \\__ \\ |  | | |  __/  __/|  __/\\__ \\"
+  echo -e "${BOLD_MAGENTA}      \\/ | .__/|___/_|  |_|  \\___|\\___(_)___||___/"
+  echo -e "${BOLD_WHITE}         | |"
+  echo -e "${BOLD_YELLOW}         |_|"
+  echo -e "${BOLD_GREEN}___________________________________________________"
+  echo -e "          ${BOLD_CYAN}-----> Fun System Resources <----${RESET_COLOR}"
+  echo -e "${BOLD_RED}            Powered by ${BOLD_WHITE}TRHACKNON${RESET_COLOR}"
 }
 
-# Function to display system resources
-display_resources() {
-	echo -e " INSTALLER OS -> ${RED} $(cat /etc/os-release | grep "PRETTY_NAME" | cut -d'"' -f2) ${RESET_COLOR}"
-	echo -e ""
-    echo -e " CPU -> ${YELLOW} $(cat /proc/cpuinfo | grep 'model name' | cut -d':' -f2- | sed 's/^ *//;s/  \+/ /g' | head -n 1) ${RESET_COLOR}"
-    echo -e " RAM -> ${BOLD_GREEN}${SERVER_MEMORY}MB${RESET_COLOR}"
-    echo -e " PRIMARY PORT -> ${BOLD_GREEN}${SERVER_PORT}${RESET_COLOR}"
-    echo -e " EXTRA PORTS -> ${BOLD_GREEN}${P_SERVER_ALLOCATION_LIMIT}${RESET_COLOR}"
-    echo -e " SERVER UUID -> ${BOLD_GREEN}${P_SERVER_UUID}${RESET_COLOR}"
-    echo -e " LOCATION -> ${BOLD_GREEN}${P_SERVER_LOCATION}${RESET_COLOR}"
+# Fun system resources display
+fun_resources() {
+  # Get CPU info
+  CPU_MODEL=$(grep -m1 'model name' /proc/cpuinfo | cut -d ':' -f 2 | sed 's/^ //g')
+  CPU_CORES=$(grep -c 'processor' /proc/cpuinfo)
+
+  # Get RAM info (in MB)
+  TOTAL_RAM=$(free -m | awk '/Mem:/ {print $2}')
+  USED_RAM=$(free -m | awk '/Mem:/ {print $3}')
+  FREE_RAM=$(free -m | awk '/Mem:/ {print $4}')
+
+  # Get disk usage (in human-readable form)
+  DISK_USAGE=$(df -h / | awk 'NR==2 {print $3 " used out of " $2}')
+
+  # Get system uptime (replacing 'uptime -p' for compatibility)
+  UPTIME=$(awk '{print int($1/3600)" hours, "int($1%3600/60)" minutes"}' /proc/uptime)
+
+  echo -e "${BOLD_MAGENTA} CPU Model -> ${YELLOW}$CPU_MODEL${RESET_COLOR}"
+  echo -e "${BOLD_CYAN} CPU Cores -> ${GREEN}$CPU_CORES${RESET_COLOR}"
+  echo -e "${BOLD_BLUE} RAM Total -> ${RED}$TOTAL_RAM MB${RESET_COLOR}"
+  echo -e "${BOLD_YELLOW} RAM Used -> ${MAGENTA}$USED_RAM MB${RESET_COLOR}"
+  echo -e "${BOLD_GREEN} RAM Free -> ${CYAN}$FREE_RAM MB${RESET_COLOR}"
+  echo -e "${BOLD_RED} Disk Usage -> ${BOLD_WHITE}$DISK_USAGE${RESET_COLOR}"
+  echo -e "${BOLD_YELLOW} Uptime -> ${BOLD_GREEN}$UPTIME${RESET_COLOR}"
 }
 
-display_footer() {
-	echo -e "${BOLD_MAGENTA}___________________________________________________${RESET_COLOR}"
-	echo -e ""
-    echo -e "           ${YELLOW}-----> VPS HAS STARTED <----${RESET_COLOR}"
+# Footer to wrap up
+fun_footer() {
+  echo -e "${BOLD_GREEN}___________________________________________________${RESET_COLOR}"
+  echo -e ""
+  echo -e "${BOLD_MAGENTA}     -----> Your VPS is now live and kicking! <----${RESET_COLOR}"
+  echo -e "${BOLD_BLUE} Time to get your hands dirty and unleash the power of Linux!${RESET_COLOR}"
+  echo -e "${BOLD_RED}               Script crafted by ${BOLD_WHITE}TRHACKNON${RESET_COLOR}"
 }
 
-# Main script execution
+# Main script
 clear
 
-display_header
-display_resources
-display_footer
-
+fun_header
+fun_resources
+fun_footer
 
 ###########################
 # Start PRoot environment #
 ###########################
-
-# This command starts PRoot and binds several important directories
-# from the host file system to our special root file system.
 $ROOTFS_DIR/usr/local/bin/proot --rootfs="${ROOTFS_DIR}" -0 -w "/root" -b /dev -b /sys -b /proc -b /etc/resolv.conf --kill-on-exit
